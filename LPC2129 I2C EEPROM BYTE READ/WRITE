@@ -1,0 +1,147 @@
+//I2C EEPROM(AT24C08) Read/Write single byte Using LPC2129 with LCD Display
+#include<lpc21xx.h>
+#include"lcdheader.h"
+
+void i2c_init(void);
+void start(void);	
+void stop(void);
+void write(char);
+char read(void);
+char ack(void);
+
+int main()
+{
+	char ch;
+	LCD_INIT();
+	LCD_CMD(0x80);
+	i2c_init();    //Configures I2C pins and clock
+	start();       //Generates START condition on I2C bus
+	write(0xa0);   //Sends slave address + write bit
+	write(0x00);   //Sends memory location address inside EEPROM
+	write('M');	   //Writes character 'M' into EEPROM memory
+	stop();	       //Generates STOP condition
+	delay(1000);   //Delay to allow EEPROM write cycle to complete
+	ch=read();     //Reads one byte from EEPROM and stores it in ch
+	LCD_STRING("I2C");
+	LCD_CMD(0xc0);   //Moves cursor to second row, first column
+	LCD_STRING("byte:");
+	LCD_CMD(0xc5);   //Moves cursor to second row, 6th column
+	LCD_DATA(ch);    //Displays the received character on LCD
+}
+
+void i2c_init()
+{
+	PINSEL0 |=0x50; //Configures P0.2(SCL) and P0.3(SDA) pins for I2C function
+	I2SCLL=75;      //Sets low time of SCL clock
+	I2SCLH=75;      //Sets high time of SCL clock
+	I2CONSET=1<<6;  //Enables I2C interface (I2EN bit)
+}
+void start()
+{
+	 I2CONSET=1<<5;               //Sets STA bit-> generates START condition
+	 I2CONCLR=1<<3;               //Clears SI flag (allows I2C to proceed)
+	 while(((I2CONSET>>3)&1)==0); //Waits until SI flag is set
+	 I2CONCLR=1<<5;               //Clears START bit
+}
+void stop()
+{
+	I2CONSET=1<<4;  //Sets STO bit-> generates STOP condition
+	I2CONCLR=1<<3;  //Clears SI flag
+}
+void write(char x)
+{
+	I2DAT=x;                    //Loads data byte into I2C data register
+	I2CONCLR=1<<3;              //Clears SI flag to start transmission
+	while(((I2CONSET>>3)&1)==0);//Waits until SI flag is set
+}
+char read()
+{
+	char ch;     //Variable to store received data
+	start();     //Sends START condition
+	write(0xa0); //Sends EEPROM address in write mode
+	write(0x00); //Sends memory location address
+	start();     //Sends repeated START
+	write(0xa1); //Sends EEPROM address in read mode
+	ch=ack();    //Reads data and sends ACK
+	return ch;   //Returns received byte
+}
+char ack()
+{
+	char ch;
+	I2CONSET=1<<2;               //Enable Asset Acknowledge bit
+	I2CONCLR=1<<3;               //Clears SI flag
+	while(((I2CONSET>>3)&1)==0); //Waits for data reception
+	ch=I2DAT;                    //Reads received byte from I2C data register
+	return ch;                   //Returns data
+}
+
+*******************************LCD_DRIVER************************************
+// 4 pins LCD DRIVER PROGRAM
+#include<LPC21XX.H>
+#define RS 1<<14
+#define LCD 0xF<<8
+#define EN 1<<15
+
+void delay(int ms)
+{
+	T0PR=15000-1;
+	T0TCR=0X01;
+	while(T0TC<ms);
+	T0TCR=0X03;
+	T0TCR=0X00;
+}
+
+void LCD_INIT(void);
+void LCD_CMD(unsigned char);
+void LCD_DATA(unsigned char);
+void LCD_STRING(unsigned char *);
+
+void LCD_INIT(void)
+{
+	IODIR0 = LCD | RS | EN;
+	LCD_CMD(0x01);
+	LCD_CMD(0x02);
+	LCD_CMD(0x0c);
+	LCD_CMD(0x28);
+}
+void LCD_CMD(unsigned char cmd)
+{
+	IOCLR0 = LCD;
+	IOSET0 = ((cmd>>4)&0x0f)<<8;
+	IOCLR0 = RS;
+	IOSET0 = EN;
+	delay(2);
+	IOCLR0 = EN;
+
+	IOCLR0 = LCD;
+	IOSET0 = (cmd&0x0f)<<8;
+	IOCLR0 = RS;
+	IOSET0 = EN;
+	delay(2);
+	IOCLR0 = EN;
+}
+
+void LCD_DATA(unsigned char d)
+{
+	IOCLR0=LCD;
+	IOSET0=((d>>4)&0x0f)<<8;
+	IOSET0 = RS;
+	IOSET0 = EN;
+	delay(2);
+	IOCLR0 = EN;
+
+	IOCLR0=LCD;
+	IOSET0=(d&0x0f)<<8;
+	IOSET0 = RS;
+	IOSET0 = EN;
+	delay(2);
+	IOCLR0 = EN;
+}
+
+void LCD_STRING(unsigned char *s)
+{
+	while(*s)
+	{
+		LCD_DATA(*s++);
+	}
+}
